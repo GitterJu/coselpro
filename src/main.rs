@@ -35,14 +35,14 @@ fn download(verbose:bool, args: Vec<String>) {
         ap.refer(&mut file_path).add_option(&["-f", "--file"], Store, "Path to file");
 
         match ap.parse(args, &mut stdout(), &mut stderr()) {
-            Ok(()) => {
-                println!("Download dataset {:?}", &view_name)
-            }
+            Ok(()) => {}
             Err(err) => {
                 std::process::exit(err);
             }
         }
     }
+    println!("Download dataset {:?}", &view_name)
+
 }
 
 fn upload(verbose:bool, args: Vec<String>) {
