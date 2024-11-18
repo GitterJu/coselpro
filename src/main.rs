@@ -41,12 +41,15 @@ fn download(verbose:bool, args: Vec<String>) {
             }
         }
     }
-    println!("Download dataset {:?}", &view_name)
-
+    print!("Download dataset {:?}", &view_name);
+    if verbose {print!(" with verbose mode")};
+    println!(".");
 }
 
 fn upload(verbose:bool, args: Vec<String>) {
-
+    print!("Upload dataset {:?}", args);
+    if verbose {print!(" with verbose mode")};
+    println!(".");
 }
 fn main() {
     let mut verbose = false;
