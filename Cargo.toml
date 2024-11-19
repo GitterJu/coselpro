@@ -3,5 +3,21 @@ name = "coselpro"
 version = "0.1.0"
 edition = "2021"
 
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+
 [dependencies]
 argparse = "0.2.2"
+polars = "0.44.2"
+lineartree = "0.1.1"
+#tauri = "2.1.1"
+postgrest = "1.6.0"
+cdumay_rest_client = "0.3.0"
+podman-rest-client = "0.13.0"
+crypto-rest-client = "1.0.1"
+crypto = "0.5.1"
+md5 = "0.7.0"
+tokio = "1.41.1"
