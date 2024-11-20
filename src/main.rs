@@ -3,6 +3,7 @@ extern crate argparse;
 use std::io::{stderr, stdout};
 use std::str::FromStr;
 use argparse::{ArgumentParser, StoreTrue, Store, List};
+use std::env;
 
 #[derive(Debug)]
 enum Command {
@@ -25,14 +26,14 @@ impl FromStr for Command {
 
 fn download(verbose:bool, args: Vec<String>) {
     let mut view_name = String::new();
-    let mut sargs:Vec<String> = Vec::new();
+    let mut filter_string = String::new();
     let mut file_path = String::new();
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("CoSelPro Download query dataset");
         ap.refer(&mut view_name).required().add_argument("query", Store, "Query name");
-        ap.refer(&mut sargs).add_argument("arguments", List, "Query arguments");
-        ap.refer(&mut file_path).add_option(&["-f", "--file"], Store, "Path to file");
+        ap.refer(&mut filter_string).add_option(&["-f", "--filter"], Store, "Query filter");
+        ap.refer(&mut file_path).add_option(&["-o", "--output"], Store, "Output file path");
 
         match ap.parse(args, &mut stdout(), &mut stderr()) {
             Ok(()) => {}
@@ -41,8 +42,22 @@ fn download(verbose:bool, args: Vec<String>) {
             }
         }
     }
-    print!("Download dataset {:?}", &view_name);
-    if verbose {print!(" with verbose mode")};
+    print!("Download dataset from {:?}", &view_name);
+    if !filter_string.is_empty() {print!(" with filter = {:?}", filter_string);}
+    let output_path:String = match file_path.is_empty() {
+        false => {file_path},
+        true => { match env::current_exe() {
+            Ok(path) => {
+                let mut pth = path.into_os_string().into_string().unwrap();
+                pth.push_str(".xlsx");
+                pth
+            },
+            _ => {"coselpro.report.xlsx".to_string()}
+        }
+        }
+    };
+    print!(" to {:?}", &output_path);
+    if verbose {print!(" in verbose mode")};
     println!(".");
 }
 
