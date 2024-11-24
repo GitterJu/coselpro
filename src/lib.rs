@@ -1,16 +1,10 @@
-const FUNCTION_LOGIN = "login";
-const LOGIN_FIELD = "login";
-const PWD_FIELD = "pass";
+mod api;
 
-use postgrest::Postgrest;
-use serde_json::{ Map, Value};
+mod api_test {
+    use crate::api::connection;
 
-#[tokio::main]
-async fn get_token(uri:&str, login:&str, pwd:&str) -> Result<(), Box<dyn std::error::Error>> {
-    let client = Postgrest::new(uri);
-    let credentials = vec![vec![LOGIN_FIELD, login], vec![PWD_FIELD, &pwd]];
-    credentials.iter().map(|c|{})
-    let resp = client.rpc(FUNCTION_LOGIN, r#"{"login":{}}"#).await?;
-    println!("{}", resp.text().await?);
-    Ok(())
+    fn test_pronpt() {
+        let cred = connection::prompt_console_credentials();
+        println!("{:?}", cred);
+    }
 }
