@@ -86,8 +86,9 @@ fn main() {
     log4rs::init_file("logging.yml", Default::default()).unwrap();
     info!("Starting CoSelPro…");
 
-    use api::connection::prompt_console_credentials;
-    println!("{:?}", prompt_console_credentials().unwrap());
+    let credentials = api::connection::Credentials::from_console_prompt()
+        .expect("Failed to get credentials from console prompt");
+    dbg!(&credentials);
 
     debug!("Extracting arguments…");
     let mut verbose = false;
