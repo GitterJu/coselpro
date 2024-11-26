@@ -81,12 +81,13 @@ fn upload(verbose: bool, args: Vec<String>) {
     println!(".");
 }
 
-mod api;
+mod db;
 fn main() {
     log4rs::init_file("logging.yml", Default::default()).unwrap();
     info!("Starting CoSelPro…");
 
-    let credentials = api::connection::Credentials::from_console_prompt()
+    //let credentials = api::connection::Credentials::from_console_prompt()
+    let credentials = db::credentials::db::Credentials::from_console_prompt()
         .expect("Failed to get credentials from console prompt");
     dbg!(&credentials);
 

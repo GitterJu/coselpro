@@ -1,60 +1,16 @@
-pub mod connection {
+pub mod db {
     const TOKEN_DEFAULT_FILE_NAME:&str = "coselpro_token.json";
-    use md5;
+    use std::env::current_dir;
+    use std::error::Error;
+    use std::fs::OpenOptions;
+    use std::io::BufReader;
+    use chrono::{Duration, Utc};
+    use homedir::my_home;
     use pgdatetime::Timestamp;
     use postgrest::Postgrest;
     use serde::{Deserialize, Serialize};
     use serde_json::{from_reader, json};
-    use std::env::current_dir;
-    use std::error::Error;
-    use std::fs::{OpenOptions};
-    use std::io::{stdin, stdout, BufReader, Write};
-
-    extern crate rpassword;
-    use chrono::{Duration, Utc};
-    use homedir::my_home;
-    use rpassword::read_password;
-
-    #[derive(Debug)]
-    pub struct Credentials {
-        login: String,
-        password: String,
-    }
-    impl Credentials {
-        pub fn new(login: &str, password: &str) -> Credentials {
-            Credentials {
-                login: login.to_string(),
-                password: password.to_string(),
-            }
-        }
-        pub fn get_login(&self) -> &String {
-            &self.login
-        }
-        pub fn get_password_md5(&self) -> String {
-            let mut wrd: String = self.password.clone();
-            wrd.push_str(&self.get_login());
-            let mut mp = format!("{:x}", md5::compute(&wrd[..])).to_string();
-            mp.insert_str(0, "md5");
-            mp
-        }
-        /// Prompt user in console for login and password and returns a credential
-        pub fn from_console_prompt() -> Result<Credentials, Box<dyn Error>> {
-            println!("Issue CoSelPro connection credentials:");
-
-            print!("login: ");
-            let _ = stdout().flush();
-            let mut login = String::new();
-            stdin().read_line(&mut login)?;
-            login = login.trim().to_lowercase().to_string();
-
-            print!("password: ");
-            let _ = stdout().flush();
-            let pwd = read_password()?;
-
-            let creds = Credentials::new(&login, &pwd.trim().to_string());
-            Ok(creds)
-        }
-    }
+    use crate::db::credentials::db::Credentials;
 
     /// CoSelPro connection token structure
     /// implement save to file and load from file
@@ -143,71 +99,18 @@ pub mod connection {
             }
         }
     }
-
-    /// CoSelPro API implementing Postgrest API
-    /// Manage authentication
-    /// Exposes CoSelPro functions
-    pub struct CoSelProAPI {
-        client: Postgrest,
-        token: Token,
-    }
-    impl CoSelProAPI {
-
-        /// Get user name from token
-        pub fn user_name(&self) -> &str {
-            dbg!(&self.token);
-            &self.token.user_name
-        }
-
-        pub fn test(&self) -> bool {
-            true
-        }
-
-        /// Create CoSelProAPI from Postgrest client and active Token
-        pub fn from_token(client:Postgrest, token: Token) -> Result<CoSelProAPI, Box<dyn Error>> {
-            dbg!(&token);
-            let token = match token.active(Some(0u8)) {
-                true => Ok(token),
-                false => Err("token not active")
-            }?;
-            dbg!(&token);
-            Ok(
-                CoSelProAPI {
-                    client,
-                    token
-                })
-        }
-        pub async fn from_credentials(client:Postgrest, credentials:&Credentials) -> Result<CoSelProAPI, Box<dyn Error>> {
-            let token = match Token::from_credentials(&client, credentials).await {
-                Some(token) => token,
-                None => Err("Unable to obtain token.")?
-            };
-            Self::from_token(client, token)
-        }
-        pub async fn from_uri_credentials(uri:&str, credentials: &Credentials) -> Result<CoSelProAPI, Box<dyn Error>> {
-            let client = Postgrest::new(uri);
-            CoSelProAPI::from_credentials(client, credentials).await
-        }
-    }
 }
+
 #[cfg(test)]
 mod tests {
     const UNIT_TEST_POSTGREST_SERVER: &str = "http://proliant:3000";
 
-    use chrono::Duration;
     use super::*;
-    use connection::*;
+    use db::Token;
     use postgrest::Postgrest;
     use tokio;
+    use crate::db::credentials::db::Credentials;
 
-    #[test]
-    fn get_password() {
-        let cred = Credentials::new("consult", "consult");
-        assert_eq!(
-            cred.get_password_md5(),
-            "md55e73b42456347af1be4be2d0c8eda64a"
-        );
-    }
     #[tokio::test(flavor = "multi_thread")]
     async fn get_token() {
         let client = Postgrest::new(UNIT_TEST_POSTGREST_SERVER).schema("rest");
@@ -246,15 +149,4 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn get_coselpro_api() {
-
-        let cred = Credentials::new("consult", "consult");
-        dbg!(&cred);
-        let api = CoSelProAPI::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &cred).await;
-        match  api {
-            Ok(api) => assert!(true),
-            Err(error) => assert!(false),
-        };
-    }
 }
