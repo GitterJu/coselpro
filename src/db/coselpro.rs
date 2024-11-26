@@ -13,7 +13,7 @@ pub mod coselpro {
     }
     impl CoSelPro {
 
-        /// Get user name from token
+        /// Get username from token
         pub fn user_name(&self) -> &str {
             dbg!(&self.token);
             &self.token.user_name()
@@ -48,6 +48,15 @@ pub mod coselpro {
             let client = Postgrest::new(uri);
             CoSelPro::from_credentials(client, credentials).await
         }
+        pub async fn renew_token(&self) -> Result<CoSelPro, Box<dyn Error>> {
+            match self.token.renew(&self.client).await {
+                Some(token) => Ok(CoSelPro {
+                    client: self.client.clone(),
+                    token
+                }),
+                None => Err("Unable to renew token")?
+            }
+        }
     }
 }
 
@@ -61,7 +70,6 @@ mod tests {
     async fn get_coselpro_api() {
 
         let cred = Credentials::new("consult", "consult");
-        dbg!(&cred);
         let api = CoSelPro::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &cred).await;
         match  api {
             Ok(api) => assert!(true),
@@ -69,4 +77,13 @@ mod tests {
         };
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_coselpro_renew_token() {
+
+        let cred = Credentials::new("consult", "consult");
+        let api = CoSelPro::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &cred)
+            .await.unwrap();
+        let renewed = api.renew_token().await.unwrap();
+        assert_eq!(renewed.user_name(), api.user_name());
+    }
 }

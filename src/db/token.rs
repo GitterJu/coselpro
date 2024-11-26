@@ -26,7 +26,7 @@ pub mod db {
             Token {
                 token: login,
                 expire: Timestamp::from((Utc::now() + Duration::minutes(15)).timestamp()),
-                user_name:user_name,
+                user_name,
             }
         }
         pub fn token(&self) -> &String {
@@ -79,21 +79,57 @@ pub mod db {
             .execute().await {
                 Ok(response) => response,
                 Err(_) => {
-                    eprintln!("Unable to connect to CoSelPro API");
+                    eprintln!("Getting token: Unable to connect to CoSelPro API");
                     return None
                 }
             };
             match response.error_for_status_ref() {
                 Ok(_) => {},
                 Err(_) => {
-                    eprintln!("Getting token. HTTP error: {}", response.status());
+                    eprintln!("Getting token: HTTP error: {}", response.status());
                     return None
                 }
             };
             match response.json::<Token>().await {
-                Ok(token) => Some(token),
+                Ok(token) => {
+                    match token.save() {
+                        Ok(_) => Some(token),
+                        Err(_) => None
+                    }
+                },
                 Err(e) => {
-                    eprintln!("Getting token. Credential failed. {e}");
+                    eprintln!("Getting token: Credential failed. {e}");
+                    None
+                },
+            }
+        }
+
+        /// Extend token with active connection
+        pub async fn renew(&self, client:&Postgrest) -> Option<Token> {
+            let response = match client.rpc("extend_token", "")
+            .execute().await {
+                Ok(response) => response,
+                Err(_) => {
+                    eprintln!("Renewing token: Unable to connect to CoSelPro API");
+                    return None
+                }
+            };
+            match response.error_for_status_ref() {
+                Ok(_) => {},
+                Err(_) => {
+                    eprintln!("Renewing token. HTTP error: {}", response.status());
+                    return None
+                }
+            };
+            match response.json::<Token>().await {
+                Ok(token) => {
+                    match token.save() {
+                        Ok(_) => Some(token),
+                        Err(_) => None
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Renewing token. Credential failed. {e}");
                     None
                 }
             }
@@ -149,4 +185,12 @@ mod tests {
         }
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn renew_token() {
+        let client = Postgrest::new(UNIT_TEST_POSTGREST_SERVER).schema("rest");
+        let credentials = Credentials::new("consult", "consult");
+        let token = Token::from_credentials(&client, &credentials).await.unwrap();
+        let renewed = token.renew(&client).await.unwrap();
+        assert!(renewed.expire() > token.expire());
+    }
 }
