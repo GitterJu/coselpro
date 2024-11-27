@@ -1,8 +1,7 @@
-
 pub mod db {
+    use rpassword::read_password;
     use std::error::Error;
     use std::io::{stdin, stdout, Write};
-    use rpassword::read_password;
 
     #[derive(Debug)]
     pub struct Credentials {

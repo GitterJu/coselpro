@@ -115,4 +115,6 @@ fn main() {
         Command::Download => download(verbose, args),
         Command::Upload => upload(verbose, args),
     }
+    error!("Just for testing…");
+    warn!("Just for testing_");
 }
