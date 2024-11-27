@@ -14,18 +14,15 @@ pub mod db {
     impl CoSelPro {
         /// Get username from token
         pub fn user_name(&self) -> &str {
-            dbg!(&self.token);
             &self.token.user_name()
         }
 
         /// Create CoSelProAPI from Postgrest client and active Token
         pub fn from_token(client: Postgrest, token: Token) -> Result<CoSelPro, Box<dyn Error>> {
-            dbg!(&token);
             let token = match token.active(Some(0u8)) {
                 true => Ok(token),
                 false => Err("token not active"),
             }?;
-            dbg!(&token);
             Ok(CoSelPro { client, token })
         }
 
@@ -68,6 +65,8 @@ pub mod db {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+    use serde::{Deserialize, Serialize};
     use crate::db::coselpro::db::CoSelPro;
     use crate::db::credentials::db::Credentials;
 
@@ -92,6 +91,20 @@ mod tests {
         assert_eq!(renewed.user_name(), api.user_name());
     }
 
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct User {
+        pub user_id: u32,
+        pub user_login: String,
+        pub user_name: String,
+        pub email: Option<String>,
+        pub phone: Option<String>,
+    }
+    impl fmt::Display for User {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "{}\t", self.user_id)
+        }
+    }
     #[tokio::test(flavor = "multi_thread")]
     async fn read_users() {
         let credentials = Credentials::new("consult", "consult");
@@ -100,7 +113,9 @@ mod tests {
             .from("users").select("*")
             .execute().await.unwrap()
             .error_for_status().unwrap()
-            .json().await;
-
+            .text().await.unwrap();
+        let val:Vec<User> = serde_json::from_str(&api).unwrap();
+        dbg!(&api);
+        val.iter().for_each(|item|println!("{:?}",item));
     }
 }

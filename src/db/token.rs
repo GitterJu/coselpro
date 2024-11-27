@@ -70,7 +70,6 @@ pub mod db {
                     return Err(Box::new(e));
                 }
             };
-            //dbg!(&self);
             match serde_json::to_writer(file, &self) {
                 Ok(_) => Ok(()),
                 Err(e) => {
@@ -155,6 +154,7 @@ pub mod db {
     }
 }
 
+// Cannot parallelize test as they read and write to the same file.
 #[cfg(test)]
 mod tests {
     const UNIT_TEST_POSTGREST_SERVER: &str = "http://proliant:3000";
@@ -165,7 +165,7 @@ mod tests {
     use postgrest::Postgrest;
     use tokio;
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn get_token() {
         let client = Postgrest::new(UNIT_TEST_POSTGREST_SERVER).schema("rest");
         let credentials = Credentials::new("consult", "consult");
@@ -184,7 +184,7 @@ mod tests {
         let client = Postgrest::new(UNIT_TEST_POSTGREST_SERVER).schema("rest");
         let credentials = Credentials::new("consult", "consult");
         match Token::from_credentials(&client, &credentials).await {
-            Some(token) =>  assert!(true),
+            Some(_) =>  assert!(true),
             None => {
                 eprintln!("Failed to get token from server.");
                 assert!(false);
@@ -198,7 +198,7 @@ mod tests {
         };
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn renew_token() {
         let client = Postgrest::new(UNIT_TEST_POSTGREST_SERVER).schema("rest");
         let credentials = Credentials::new("jmeyer", "jmeyer");
