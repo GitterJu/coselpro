@@ -184,7 +184,7 @@ mod tests {
         let client = Postgrest::new(UNIT_TEST_POSTGREST_SERVER).schema("rest");
         let credentials = Credentials::new("consult", "consult");
         match Token::from_credentials(&client, &credentials).await {
-            Some(_) =>  assert!(true),
+            Some(_) => assert!(true),
             None => {
                 eprintln!("Failed to get token from server.");
                 assert!(false);
