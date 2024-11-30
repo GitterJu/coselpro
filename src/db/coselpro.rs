@@ -51,8 +51,8 @@ pub mod db {
             credentials: &Credentials,
         ) -> Result<CoSelPro> {
             let token = match Token::from_credentials(&client, credentials).await {
-                Some(token) => token,
-                None => Err(CoSelProDbError::NewToken)?,
+                Ok(token) => token,
+                Err(_) => return Err(CoSelProDbError::NewToken),
             };
             Self::from_token(client, token)
         }
@@ -69,11 +69,11 @@ pub mod db {
         /// Force CoSelPro token renewal
         pub async fn renew_token(&self) -> Result<CoSelPro> {
             match self.token.renew(&self.client).await {
-                Some(token) => Ok(CoSelPro {
+                Ok(token) => Ok(CoSelPro {
                     client: self.client.clone(),
                     token,
                 }),
-                None => Err(CoSelProDbError::RenewToken)?,
+                Err(_) => Err(CoSelProDbError::RenewToken)?,
             }
         }
         pub fn from(self, table: &str) -> Builder {

@@ -1,6 +1,7 @@
 pub mod db {
     const TOKEN_DEFAULT_FILE_NAME: &str = "coselpro_token.json";
     use crate::db::credentials::db::Credentials;
+    use crate::db::token::db::TokenError::TokenLoadingError;
     use chrono::{Duration, Utc};
     use homedir::my_home;
     use pgdatetime::Timestamp;
@@ -9,10 +10,33 @@ pub mod db {
     use serde::{Deserialize, Serialize};
     use serde_json::{from_reader, json};
     use std::env::current_dir;
-    use std::error::Error;
+    use std::fmt;
     use std::fs::{File, OpenOptions};
     use std::io::BufReader;
     use std::path::PathBuf;
+
+    type Result<T> = std::result::Result<T, TokenError>;
+    #[derive(Debug, Clone)]
+    pub enum TokenError {
+        TokenSavingError,
+        TokenLoadingError,
+        TokenParsingError,
+    }
+    impl fmt::Display for TokenError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match *self {
+                TokenError::TokenSavingError => {
+                    write!(f, "CoSelPro Token Error: Failed to save token")
+                }
+                TokenError::TokenLoadingError => {
+                    write!(f, "CoSelPro Token Error: Failed to load token")
+                }
+                TokenError::TokenParsingError => {
+                    write!(f, "CoSelPro Token Error: Failed to parse token")
+                } //_ => write!(f, "CoSelPro Database Error")
+            }
+        }
+    }
 
     /// CoSelPro connection token structure
     /// implement save to file and load from file
@@ -57,7 +81,7 @@ pub mod db {
         }
 
         /// Save token on user profile
-        pub fn save(&self) -> Result<(), Box<dyn Error>> {
+        pub fn save(&self) -> Result<()> {
             let file = match OpenOptions::new()
                 .write(true)
                 .truncate(true)
@@ -67,76 +91,63 @@ pub mod db {
                 Ok(file) => file,
                 Err(e) => {
                     eprintln!("Failed to open the file{}", e);
-                    return Err(Box::new(e));
+                    return Err(TokenError::TokenLoadingError);
                 }
             };
             match serde_json::to_writer(file, &self) {
                 Ok(_) => Ok(()),
                 Err(e) => {
                     eprintln!("Failed to serialize the file {}", e);
-                    Err(Box::new(e))
+                    Err(TokenError::TokenLoadingError)
                 }
             }
         }
 
         /// Create new token from token file on the user profile
-        pub fn load() -> Option<Token> {
+        pub fn load() -> Result<Token> {
             let file = match File::open(Self::get_dir()) {
                 Ok(file) => file,
-                Err(e) => {
-                    eprintln!("Failed to open the file{}", e);
-                    return None;
-                }
+                Err(_) => return Err(TokenLoadingError),
             };
             let reader = BufReader::new(file);
-            from_reader(reader).unwrap_or_else(|e| {
-                eprintln!("Failed to deserialize the file {}", e);
-                None
-            })
+            match from_reader(reader) {
+                Ok(token) => Ok(token),
+                Err(_) => return Err(TokenError::TokenLoadingError),
+            }
         }
 
-        async fn parse_response(response: Response) -> Option<Token> {
+        async fn parse_response(response: Response) -> Result<Token> {
             match response.error_for_status_ref() {
                 Ok(_) => {}
-                Err(_) => {
-                    eprintln!("Getting token: HTTP error: {}", response.status());
-                    return None;
-                }
+                Err(_) => return Err(TokenError::TokenParsingError),
             };
             match response.json::<Token>().await {
                 Ok(token) => match token.save() {
-                    Ok(_) => Some(token),
-                    Err(_) => {
-                        eprintln!("Error saving token");
-                        Some(token)
-                    }
+                    Ok(_) => Ok(token),
+                    Err(_) => return Err(TokenError::TokenParsingError),
                 },
-                Err(e) => {
-                    eprintln!("Renewing token. Credential failed. {e}");
-                    None
-                }
+                Err(_) => return Err(TokenError::TokenParsingError),
             }
         }
         /// Create new token from active connection and user credentials
         pub async fn from_credentials(
             client: &Postgrest,
             credentials: &Credentials,
-        ) -> Option<Token> {
+        ) -> Result<Token> {
             let response = match client.rpc("login",
             json!({ "username": credentials.get_login(), "pass": credentials.get_password_md5()})
                 .to_string())
             .execute().await {
                 Ok(response) => response,
                 Err(_) => {
-                    eprintln!("Getting token: Unable to connect to CoSelPro API");
-                    return None
+                    return Err(TokenError::TokenLoadingError);
                 }
             };
             Self::parse_response(response).await
         }
 
         /// Extend token with active connection
-        pub async fn renew(&self, client: &Postgrest) -> Option<Token> {
+        pub async fn renew(&self, client: &Postgrest) -> Result<Token> {
             let response = match client
                 .rpc("extend_token", "")
                 .auth(&self.token)
@@ -145,8 +156,7 @@ pub mod db {
             {
                 Ok(response) => response,
                 Err(_) => {
-                    eprintln!("Renewing token: Unable to connect to CoSelPro API");
-                    return None;
+                    return Err(TokenError::TokenLoadingError);
                 }
             };
             Self::parse_response(response).await
@@ -171,9 +181,9 @@ mod tests {
         let credentials = Credentials::new("consult", "consult");
         let token = Token::from_credentials(&client, &credentials).await;
         match token {
-            Some(token) => assert!(token.active(None)),
-            None => {
-                eprintln!("Unable to extract token from server.");
+            Ok(token) => assert!(token.active(None)),
+            Err(e) => {
+                eprintln!("{e}");
                 assert!(false);
             }
         }
@@ -184,17 +194,20 @@ mod tests {
         let client = Postgrest::new(UNIT_TEST_POSTGREST_SERVER).schema("rest");
         let credentials = Credentials::new("consult", "consult");
         match Token::from_credentials(&client, &credentials).await {
-            Some(_) => assert!(true),
-            None => {
-                eprintln!("Failed to get token from server.");
+            Ok(_) => assert!(true),
+            Err(e) => {
+                eprintln!("{e}");
                 assert!(false);
             }
         };
 
         let token = Token::load();
         match token {
-            Some(token) => assert!(token.active(None)),
-            None => assert!(false),
+            Ok(token) => assert!(token.active(None)),
+            Err(e) => {
+                eprintln!("{e}");
+                assert!(false)
+            }
         };
     }
 
