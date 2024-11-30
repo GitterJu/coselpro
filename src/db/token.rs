@@ -18,23 +18,22 @@ pub mod db {
     type Result<T> = std::result::Result<T, TokenError>;
     #[derive(Debug, Clone)]
     pub enum TokenError {
-        TokenSavingError,
-        TokenLoadingError,
-        TokenParsingError,
+        TokenSavingError(String),
+        TokenLoadingError(String),
+        TokenParsingError(String),
     }
     impl fmt::Display for TokenError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match *self {
-                TokenError::TokenSavingError => {
-                    write!(f, "CoSelPro Token Error: Failed to save token")
-                }
-                TokenError::TokenLoadingError => {
-                    write!(f, "CoSelPro Token Error: Failed to load token")
-                }
-                TokenError::TokenParsingError => {
-                    write!(f, "CoSelPro Token Error: Failed to parse token")
-                } //_ => write!(f, "CoSelPro Database Error")
-            }
+            let tp = match self {
+                TokenError::TokenSavingError(str) => ("save", str),
+                TokenLoadingError(str) => ("load", str),
+                TokenError::TokenParsingError(str) => ("parse", str),
+            };
+            write!(
+                f,
+                "CoSelPro Token Error: Failed to {} token! {}",
+                tp.0, tp.1
+            )
         }
     }
 
@@ -90,16 +89,18 @@ pub mod db {
             {
                 Ok(file) => file,
                 Err(e) => {
-                    eprintln!("Failed to open the file{}", e);
-                    return Err(TokenError::TokenLoadingError);
+                    return Err(TokenError::TokenSavingError(format!(
+                        "Failed to open the file{}",
+                        e
+                    )))
                 }
             };
             match serde_json::to_writer(file, &self) {
                 Ok(_) => Ok(()),
-                Err(e) => {
-                    eprintln!("Failed to serialize the file {}", e);
-                    Err(TokenError::TokenLoadingError)
-                }
+                Err(e) => Err(TokenError::TokenSavingError(format!(
+                    "Failed to serialize the file {}",
+                    e
+                ))),
             }
         }
 
@@ -107,26 +108,26 @@ pub mod db {
         pub fn load() -> Result<Token> {
             let file = match File::open(Self::get_dir()) {
                 Ok(file) => file,
-                Err(_) => return Err(TokenLoadingError),
+                Err(e) => return Err(TokenLoadingError(e.to_string())),
             };
             let reader = BufReader::new(file);
             match from_reader(reader) {
                 Ok(token) => Ok(token),
-                Err(_) => return Err(TokenError::TokenLoadingError),
+                Err(e) => Err(TokenLoadingError(e.to_string())),
             }
         }
 
         async fn parse_response(response: Response) -> Result<Token> {
             match response.error_for_status_ref() {
                 Ok(_) => {}
-                Err(_) => return Err(TokenError::TokenParsingError),
+                Err(e) => return Err(TokenError::TokenParsingError(e.to_string())),
             };
             match response.json::<Token>().await {
                 Ok(token) => match token.save() {
                     Ok(_) => Ok(token),
-                    Err(_) => return Err(TokenError::TokenParsingError),
+                    Err(e) => Err(TokenError::TokenParsingError(e.to_string())),
                 },
-                Err(_) => return Err(TokenError::TokenParsingError),
+                Err(e) => Err(TokenError::TokenParsingError(e.to_string())),
             }
         }
         /// Create new token from active connection and user credentials
@@ -139,8 +140,8 @@ pub mod db {
                 .to_string())
             .execute().await {
                 Ok(response) => response,
-                Err(_) => {
-                    return Err(TokenError::TokenLoadingError);
+                Err(e) => {
+                    return Err(TokenLoadingError(e.to_string()));
                 }
             };
             Self::parse_response(response).await
@@ -155,8 +156,8 @@ pub mod db {
                 .await
             {
                 Ok(response) => response,
-                Err(_) => {
-                    return Err(TokenError::TokenLoadingError);
+                Err(e) => {
+                    return Err(TokenLoadingError(e.to_string()));
                 }
             };
             Self::parse_response(response).await
@@ -173,6 +174,7 @@ mod tests {
     use crate::db::credentials::db::Credentials;
     use db::Token;
     use postgrest::Postgrest;
+    use std::thread::sleep;
     use tokio;
 
     #[tokio::test]
@@ -200,6 +202,8 @@ mod tests {
                 assert!(false);
             }
         };
+
+        sleep(std::time::Duration::from_millis(100)); // Leave time before reopening the file.
 
         let token = Token::load();
         match token {

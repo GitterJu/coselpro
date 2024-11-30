@@ -3,18 +3,23 @@ pub mod db {
     use std::fmt;
     use std::io::{stdin, stdout, Write};
 
-    type Result<T> = std::result::Result<T, TokenError>;
+    type Result<T> = std::result::Result<T, CredentialsError>;
     #[derive(Debug, Clone)]
-    pub enum TokenError {
-        UserEntry,
+    pub enum CredentialsError {
+        LoginEntryError(String),
+        PasswordEntryError(String),
     }
-    impl fmt::Display for TokenError {
+    impl fmt::Display for CredentialsError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match *self {
-                TokenError::UserEntry => {
-                    write!(f, "CoSelPro Credentials Error: Failed to get user entry")
-                } //_ => write!(f, "CoSelPro Database Error")
-            }
+            let tp = match self {
+                CredentialsError::LoginEntryError(str) => ("logging", str),
+                CredentialsError::PasswordEntryError(str) => ("password", str),
+            };
+            write!(
+                f,
+                "CoSelPro Credentials Error: Failed to get user {}! {}",
+                tp.0, tp.1
+            )
         }
     }
 
@@ -49,7 +54,7 @@ pub mod db {
             let mut login = String::new();
             match stdin().read_line(&mut login) {
                 Ok(_) => {}
-                Err(_) => return Err(TokenError::UserEntry),
+                Err(e) => return Err(CredentialsError::LoginEntryError(e.to_string())),
             };
             login = login.trim().to_lowercase().to_string();
 
@@ -57,7 +62,7 @@ pub mod db {
             let _ = stdout().flush();
             let pwd = match read_password() {
                 Ok(pwd) => pwd,
-                Err(_) => return Err(TokenError::UserEntry),
+                Err(e) => return Err(CredentialsError::PasswordEntryError(e.to_string())),
             };
 
             let creds = Credentials::new(&login, &pwd.trim().to_string());

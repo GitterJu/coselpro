@@ -1,25 +1,30 @@
 pub mod db {
     use crate::db::credentials::db::Credentials;
+    use crate::db::token::db;
     use crate::db::token::db::Token;
     use postgrest::{Builder, Postgrest};
     use std::fmt;
+    use crate::db::coselpro::db::CoSelProDbError::ExpiredToken;
 
     type Result<T> = std::result::Result<T, CoSelProDbError>;
     #[derive(Debug, Clone)]
     pub enum CoSelProDbError {
-        NewToken,
-        RenewToken,
+        NewToken(db::TokenError),
+        RenewToken(db::TokenError),
+        ExpiredToken,
     }
     impl fmt::Display for CoSelProDbError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match *self {
-                CoSelProDbError::NewToken => {
-                    write!(f, "CoSelPro Database Error: Failed to get new token")
+            let err_det = match self {
+                CoSelProDbError::NewToken(tk_err) => {
+                    ("Failed to get new token!", tk_err.to_string())
                 }
-                CoSelProDbError::RenewToken => {
-                    write!(f, "CoSelPro Database Error: Failed to renew token")
-                } //_ => write!(f, "CoSelPro Database Error")
-            }
+                CoSelProDbError::RenewToken(tk_err) => {
+                    ("Failed to renew token!", tk_err.to_string())
+                }
+                ExpiredToken => ("Token expired!", String::from("inactive")),
+            };
+            write!(f, "CoSelPro Database Error: {} {}", err_det.0, err_det.1)
         }
     }
 
@@ -40,7 +45,7 @@ pub mod db {
         pub fn from_token(client: Postgrest, token: Token) -> Result<CoSelPro> {
             let token = match token.active(Some(0u8)) {
                 true => Ok(token),
-                false => Err(CoSelProDbError::NewToken),
+                false => Err(ExpiredToken),
             }?;
             Ok(CoSelPro { client, token })
         }
@@ -52,7 +57,7 @@ pub mod db {
         ) -> Result<CoSelPro> {
             let token = match Token::from_credentials(&client, credentials).await {
                 Ok(token) => token,
-                Err(_) => return Err(CoSelProDbError::NewToken),
+                Err(e) => return Err(CoSelProDbError::NewToken(e)),
             };
             Self::from_token(client, token)
         }
@@ -67,13 +72,20 @@ pub mod db {
         }
 
         /// Force CoSelPro token renewal
-        pub async fn renew_token(&self) -> Result<CoSelPro> {
+        pub async fn renew(&self) -> Result<CoSelPro> {
             match self.token.renew(&self.client).await {
                 Ok(token) => Ok(CoSelPro {
                     client: self.client.clone(),
                     token,
                 }),
-                Err(_) => Err(CoSelProDbError::RenewToken)?,
+                Err(e) => Err(CoSelProDbError::RenewToken(e))?,
+            }
+        }
+
+        fn get_token(&self) -> Result<&Token> {
+            match &self.token.active(Some(0u8)) {
+                true => Ok(&self.token),
+                false => Err(ExpiredToken),
             }
         }
         pub fn from(self, table: &str) -> Builder {
@@ -111,7 +123,7 @@ mod tests {
         let api = CoSelPro::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &cred)
             .await
             .unwrap();
-        let renewed = api.renew_token().await.unwrap();
+        let renewed = api.renew().await.unwrap();
         assert_eq!(renewed.user_name(), api.user_name());
     }
 
@@ -128,7 +140,8 @@ mod tests {
             write!(f, "{}\t", self.user_id)
         }
     }
-    #[tokio::test(flavor = "multi_thread")]
+    //#[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn read_users() {
         let credentials = Credentials::new("consult", "consult");
         let api = CoSelPro::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &credentials)
