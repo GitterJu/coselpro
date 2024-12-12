@@ -6,12 +6,14 @@ pub mod db {
     type Result<T> = std::result::Result<T, CredentialsError>;
     #[derive(Debug, Clone)]
     pub enum CredentialsError {
+        UriEntryError(String),
         LoginEntryError(String),
         PasswordEntryError(String),
     }
     impl fmt::Display for CredentialsError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             let tp = match self {
+                CredentialsError::UriEntryError(str) => ("uri", str),
                 CredentialsError::LoginEntryError(str) => ("logging", str),
                 CredentialsError::PasswordEntryError(str) => ("password", str),
             };
@@ -25,12 +27,14 @@ pub mod db {
 
     #[derive(Debug)]
     pub struct Credentials {
+        host: String,
         login: String,
         password: String,
     }
     impl Credentials {
-        pub fn new(login: &str, password: &str) -> Credentials {
+        pub fn new(address: &str, login: &str, password: &str) -> Credentials {
             Credentials {
+                host: address.to_string(),
                 login: login.to_string(),
                 password: password.to_string(),
             }
@@ -45,9 +49,21 @@ pub mod db {
             mp.insert_str(0, "md5");
             mp
         }
+        pub fn get_uri(&self) -> &String {
+            &self.host
+        }
         /// Prompt user in console for login and password and returns a credential
         pub fn from_console_prompt() -> Result<Credentials> {
             println!("Issue CoSelPro connection credentials:");
+
+            print!("uri: ");
+            let _ = stdout().flush();
+            let mut uri = String::new();
+            match stdin().read_line(&mut uri) {
+                Ok(_) => (),
+                Err(e) => return Err(CredentialsError::UriEntryError(e.to_string())),
+            }
+            uri = uri.trim().to_string();
 
             print!("login: ");
             let _ = stdout().flush();
@@ -65,7 +81,7 @@ pub mod db {
                 Err(e) => return Err(CredentialsError::PasswordEntryError(e.to_string())),
             };
 
-            let creds = Credentials::new(&login, &pwd.trim().to_string());
+            let creds = Credentials::new(&uri, &login, &pwd.trim().to_string());
             Ok(creds)
         }
     }
@@ -74,10 +90,11 @@ pub mod db {
 #[cfg(test)]
 mod tests {
     use crate::db::credentials::db::Credentials;
+    const UNIT_TEST_POSTGREST_SERVER: &str = "http://proliant:3000";
 
     #[test]
     fn get_password() {
-        let cred = Credentials::new("consult", "consult");
+        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
         assert_eq!(
             cred.get_password_md5(),
             "md55e73b42456347af1be4be2d0c8eda64a"

@@ -1,12 +1,13 @@
 pub mod db {
+    const DEFAULT_COSELPRO_SCHEMA: &str = "rest";
+    use crate::db::coselpro::db::CoSelProDbError::ExpiredToken;
     use crate::db::credentials::db::Credentials;
     use crate::db::token::db;
     use crate::db::token::db::Token;
     use postgrest::{Builder, Postgrest};
     use std::fmt;
-    use crate::db::coselpro::db::CoSelProDbError::ExpiredToken;
 
-    type Result<T> = std::result::Result<T, CoSelProDbError>;
+    pub type Result<T> = std::result::Result<T, CoSelProDbError>;
     #[derive(Debug, Clone)]
     pub enum CoSelProDbError {
         NewToken(db::TokenError),
@@ -32,8 +33,9 @@ pub mod db {
     /// Manage authentication
     /// Exposes CoSelPro functions
     pub struct CoSelPro {
-        client: Postgrest,
-        token: Token,
+        pub client: Postgrest,
+        pub token: Token,
+        pub schema: String,
     }
     impl CoSelPro {
         /// Get username from token
@@ -42,33 +44,50 @@ pub mod db {
         }
 
         /// Create CoSelProAPI from Postgrest client and active Token
-        pub fn from_token(client: Postgrest, token: Token) -> Result<CoSelPro> {
+        pub fn from_token(
+            client: Postgrest,
+            token: Token,
+            schema: Option<String>,
+        ) -> Result<CoSelPro> {
             let token = match token.active(Some(0u8)) {
                 true => Ok(token),
                 false => Err(ExpiredToken),
             }?;
-            Ok(CoSelPro { client, token })
+            match schema {
+                Some(schema) => Ok(CoSelPro {
+                    client,
+                    token,
+                    schema,
+                }),
+                None => Ok(CoSelPro {
+                    client,
+                    token,
+                    schema: DEFAULT_COSELPRO_SCHEMA.to_string(),
+                }),
+            }
         }
 
         /// Create new CoSelPro from Postgrest client and credentials.
         pub async fn from_credentials(
-            client: Postgrest,
             credentials: &Credentials,
+            schema: Option<String>,
         ) -> Result<CoSelPro> {
-            let token = match Token::from_credentials(&client, credentials).await {
+            let token = match Token::from_credentials(credentials).await {
                 Ok(token) => token,
                 Err(e) => return Err(CoSelProDbError::NewToken(e)),
             };
-            Self::from_token(client, token)
-        }
-
-        /// Create new CoSelPro from uri and credentials
-        pub async fn from_uri_credentials(
-            uri: &str,
-            credentials: &Credentials,
-        ) -> Result<CoSelPro> {
-            let client = Postgrest::new(uri);
-            CoSelPro::from_credentials(client, credentials).await
+            match schema {
+                Some(schema) => Ok(CoSelPro {
+                    client: Postgrest::new(credentials.get_uri()),
+                    token,
+                    schema,
+                }),
+                None => Ok(CoSelPro {
+                    client: Postgrest::new(credentials.get_uri()),
+                    token,
+                    schema: DEFAULT_COSELPRO_SCHEMA.to_string(),
+                }),
+            }
         }
 
         /// Force CoSelPro token renewal
@@ -77,6 +96,7 @@ pub mod db {
                 Ok(token) => Ok(CoSelPro {
                     client: self.client.clone(),
                     token,
+                    schema: self.schema.clone(),
                 }),
                 Err(e) => Err(CoSelProDbError::RenewToken(e))?,
             }
@@ -88,11 +108,14 @@ pub mod db {
                 false => Err(ExpiredToken),
             }
         }
-        pub fn from(self, table: &str) -> Builder {
-            self.client
-                .schema("rest")
+        pub fn from(self, table: &str) -> Result<Builder> {
+            let token = self.get_token()?;
+            Ok(self
+                .client
+                .clone()
+                .schema(&self.schema)
                 .from(table)
-                .auth(&self.token.to_string())
+                .auth(token.to_string()))
         }
     }
 }
@@ -105,24 +128,20 @@ mod tests {
     use std::fmt;
 
     const UNIT_TEST_POSTGREST_SERVER: &str = "http://proliant:3000";
-    //#[tokio::test(flavor = "multi_thread")]
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn get_coselpro_api() {
-        let cred = Credentials::new("consult", "consult");
-        let api = CoSelPro::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &cred).await;
+        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
+        let api = CoSelPro::from_credentials(&cred, None).await;
         match api {
             Ok(_) => assert!(true),
             Err(_) => assert!(false),
         };
     }
 
-    //#[tokio::test(flavor = "multi_thread")]
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn get_coselpro_renew_token() {
-        let cred = Credentials::new("jmeyer", "jmeyer");
-        let api = CoSelPro::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &cred)
-            .await
-            .unwrap();
+        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "jmeyer", "jmeyer");
+        let api = CoSelPro::from_credentials(&cred, None).await.unwrap();
         let renewed = api.renew().await.unwrap();
         assert_eq!(renewed.user_name(), api.user_name());
     }
@@ -140,14 +159,14 @@ mod tests {
             write!(f, "{}\t", self.user_id)
         }
     }
-    //#[tokio::test(flavor = "multi_thread")]
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn read_users() {
-        let credentials = Credentials::new("consult", "consult");
-        let api = CoSelPro::from_uri_credentials(UNIT_TEST_POSTGREST_SERVER, &credentials)
+        let credentials = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
+        let api = CoSelPro::from_credentials(&credentials, None)
             .await
             .unwrap()
             .from("users")
+            .unwrap()
             .select("*")
             .execute()
             .await
