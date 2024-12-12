@@ -165,6 +165,7 @@ dependencies = [
  "argparse",
  "chrono",
  "homedir",
+    "http",
  "log",
  "log4rs",
  "md5",

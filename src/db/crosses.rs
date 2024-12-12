@@ -47,7 +47,8 @@ pub mod db {
     impl db::CoSelPro {
         pub async fn x_company(self, x_company_request: XCompanyRequest) -> Option<XCompany> {
             let response = match self
-                .client.clone()
+                .client
+                .clone()
                 .schema("rest")
                 .rpc("xcompany", x_company_request.to_string())
                 .auth(&self.token.to_string())
@@ -95,8 +96,9 @@ mod tests {
     const UNIT_TEST_POSTGREST_SERVER: &str = "http://proliant:3000";
     #[tokio::test(flavor = "multi_thread")]
     async fn xcompany() {
-        let creds = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
-        let api = CoSelPro::from_credentials(&creds, None).await.unwrap();
+        let credentials =
+            Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult").unwrap();
+        let api = CoSelPro::from_credentials(credentials, None).await.unwrap();
         let xcp = XCompanyRequest {
             company: "ti".to_string(),
             division_ids: None,
@@ -108,11 +110,13 @@ mod tests {
             None => assert!(false),
         };
 
+        /*
         let xcp2 = XCompanyRequest {
             company: "AD".to_string(),
             division_ids: None,
             xcompany_type_ids: None,
         };
-        //let r_xcp2 = &api.x_company(xcp2).await;
+        let r_xcp2 = &api.x_company(xcp2).await;
+        */
     }
 }

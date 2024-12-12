@@ -43,47 +43,24 @@ pub mod db {
             &self.token.user_name()
         }
 
-        /// Create CoSelProAPI from Postgrest client and active Token
-        pub fn from_token(
-            client: Postgrest,
-            token: Token,
-            schema: Option<String>,
-        ) -> Result<CoSelPro> {
-            let token = match token.active(Some(0u8)) {
-                true => Ok(token),
-                false => Err(ExpiredToken),
-            }?;
-            match schema {
-                Some(schema) => Ok(CoSelPro {
-                    client,
-                    token,
-                    schema,
-                }),
-                None => Ok(CoSelPro {
-                    client,
-                    token,
-                    schema: DEFAULT_COSELPRO_SCHEMA.to_string(),
-                }),
-            }
-        }
-
         /// Create new CoSelPro from Postgrest client and credentials.
         pub async fn from_credentials(
-            credentials: &Credentials,
+            credentials: Credentials,
             schema: Option<String>,
         ) -> Result<CoSelPro> {
+            let client = credentials.client();
             let token = match Token::from_credentials(credentials).await {
                 Ok(token) => token,
                 Err(e) => return Err(CoSelProDbError::NewToken(e)),
             };
             match schema {
                 Some(schema) => Ok(CoSelPro {
-                    client: Postgrest::new(credentials.get_uri()),
+                    client,
                     token,
                     schema,
                 }),
                 None => Ok(CoSelPro {
-                    client: Postgrest::new(credentials.get_uri()),
+                    client,
                     token,
                     schema: DEFAULT_COSELPRO_SCHEMA.to_string(),
                 }),
@@ -92,7 +69,7 @@ pub mod db {
 
         /// Force CoSelPro token renewal
         pub async fn renew(&self) -> Result<CoSelPro> {
-            match self.token.renew(&self.client).await {
+            match self.token.renew(self.client.clone()).await {
                 Ok(token) => Ok(CoSelPro {
                     client: self.client.clone(),
                     token,
@@ -130,8 +107,9 @@ mod tests {
     const UNIT_TEST_POSTGREST_SERVER: &str = "http://proliant:3000";
     #[tokio::test(flavor = "multi_thread")]
     async fn get_coselpro_api() {
-        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
-        let api = CoSelPro::from_credentials(&cred, None).await;
+        let credentials =
+            Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult").unwrap();
+        let api = CoSelPro::from_credentials(credentials, None).await;
         match api {
             Ok(_) => assert!(true),
             Err(_) => assert!(false),
@@ -140,8 +118,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn get_coselpro_renew_token() {
-        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "jmeyer", "jmeyer");
-        let api = CoSelPro::from_credentials(&cred, None).await.unwrap();
+        let credentials = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "jmeyer", "jmeyer").unwrap();
+        let api = CoSelPro::from_credentials(credentials, None).await.unwrap();
         let renewed = api.renew().await.unwrap();
         assert_eq!(renewed.user_name(), api.user_name());
     }
@@ -161,8 +139,9 @@ mod tests {
     }
     #[tokio::test(flavor = "multi_thread")]
     async fn read_users() {
-        let credentials = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
-        let api = CoSelPro::from_credentials(&credentials, None)
+        let credentials =
+            Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult").unwrap();
+        let api = CoSelPro::from_credentials(credentials, None)
             .await
             .unwrap()
             .from("users")

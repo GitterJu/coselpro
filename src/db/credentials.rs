@@ -1,7 +1,10 @@
 pub mod db {
+    use http::Uri;
+    use postgrest::Postgrest;
     use rpassword::read_password;
     use std::fmt;
     use std::io::{stdin, stdout, Write};
+    use std::str::FromStr;
 
     type Result<T> = std::result::Result<T, CredentialsError>;
     #[derive(Debug, Clone)]
@@ -31,13 +34,21 @@ pub mod db {
         login: String,
         password: String,
     }
+
     impl Credentials {
-        pub fn new(address: &str, login: &str, password: &str) -> Credentials {
-            Credentials {
+        pub fn new(address: &str, login: &str, password: &str) -> Result<Credentials> {
+            match Uri::from_str(address) {
+                Ok(_) => {}
+                Err(error) => {
+                    eprintln!("Error parsing URI {}: {}", address, error);
+                    return Err(CredentialsError::UriEntryError(error.to_string()));
+                }
+            };
+            Ok(Credentials {
                 host: address.to_string(),
                 login: login.to_string(),
                 password: password.to_string(),
-            }
+            })
         }
         pub fn get_login(&self) -> &String {
             &self.login
@@ -49,8 +60,12 @@ pub mod db {
             mp.insert_str(0, "md5");
             mp
         }
-        pub fn get_uri(&self) -> &String {
-            &self.host
+        fn get_uri(&self) -> Uri {
+            Uri::from_str(&self.host).expect("Error parsing host address to URL")
+        }
+
+        pub fn client(&self) -> Postgrest {
+            Postgrest::new(self.get_uri().host().unwrap())
         }
         /// Prompt user in console for login and password and returns a credential
         pub fn from_console_prompt() -> Result<Credentials> {
@@ -81,8 +96,7 @@ pub mod db {
                 Err(e) => return Err(CredentialsError::PasswordEntryError(e.to_string())),
             };
 
-            let creds = Credentials::new(&uri, &login, &pwd.trim().to_string());
-            Ok(creds)
+            Credentials::new(&uri, &login, &pwd.trim().to_string())
         }
     }
 }
@@ -94,7 +108,7 @@ mod tests {
 
     #[test]
     fn get_password() {
-        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
+        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult").unwrap();
         assert_eq!(
             cred.get_password_md5(),
             "md55e73b42456347af1be4be2d0c8eda64a"

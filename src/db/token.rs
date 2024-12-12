@@ -66,8 +66,8 @@ pub mod db {
         }
 
         /// Create new token from active connection and user credentials
-        pub async fn from_credentials(credentials: &Credentials) -> Result<Token> {
-            let client = Postgrest::new(credentials.get_uri());
+        pub async fn from_credentials(credentials: Credentials) -> Result<Token> {
+            let client = credentials.client();
             let response = match client.rpc("login",
             json!({ "username": credentials.get_login(), "pass": credentials.get_password_md5()})
                 .to_string())
@@ -81,7 +81,7 @@ pub mod db {
         }
 
         /// Extend token with active connection
-        pub async fn renew(&self, client: &Postgrest) -> Result<Token> {
+        pub async fn renew(&self, client: Postgrest) -> Result<Token> {
             let response = match client
                 .rpc("extend_token", "")
                 .auth(&self.token)
@@ -106,13 +106,13 @@ mod tests {
     use super::*;
     use crate::db::credentials::db::Credentials;
     use db::Token;
-    use postgrest::Postgrest;
     use tokio;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn get_token() {
-        let credentials = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult");
-        let token = Token::from_credentials(&credentials).await;
+        let credentials =
+            Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult").unwrap();
+        let token = Token::from_credentials(credentials).await;
         match token {
             Ok(token) => assert!(token.active(None)),
             Err(e) => {
@@ -124,12 +124,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn renew_token() {
-        let credentials = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "jmeyer", "jmeyer");
-        let token = Token::from_credentials(&credentials).await.unwrap();
-        let renewed = token
-            .renew(&Postgrest::new(credentials.get_uri()))
-            .await
-            .unwrap();
+        let credentials = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "jmeyer", "jmeyer").unwrap();
+        let token = Token::from_credentials(credentials).await.unwrap();
+        let crds = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "jmeyer", "jmeyer").unwrap();
+        let renewed = token.renew(crds.client()).await.unwrap();
         assert!(&renewed.expire() > &token.expire() && &renewed.user_name() == &token.user_name());
     }
 }
