@@ -1,4 +1,6 @@
 pub mod db {
+    use crate::db::token::db;
+    use db::Token;
     use http::Uri;
     use postgrest::Postgrest;
     use rpassword::read_password;
@@ -12,6 +14,7 @@ pub mod db {
         UriEntryError(String),
         LoginEntryError(String),
         PasswordEntryError(String),
+        TokenError(String),
     }
     impl fmt::Display for CredentialsError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -19,6 +22,7 @@ pub mod db {
                 CredentialsError::UriEntryError(str) => ("uri", str),
                 CredentialsError::LoginEntryError(str) => ("logging", str),
                 CredentialsError::PasswordEntryError(str) => ("password", str),
+                CredentialsError::TokenError(str) => ("token", str),
             };
             write!(
                 f,
@@ -28,7 +32,7 @@ pub mod db {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Credentials {
         host: String,
         login: String,
@@ -60,12 +64,20 @@ pub mod db {
             mp.insert_str(0, "md5");
             mp
         }
+        /*
         fn get_uri(&self) -> Uri {
             Uri::from_str(&self.host).expect("Error parsing host address to URL")
         }
-
+        */
         pub fn client(&self) -> Postgrest {
             Postgrest::new(&self.host)
+        }
+
+        pub async fn token(self) -> Result<Token> {
+            match Token::from_credentials(self.clone()).await {
+                Ok(token) => Ok(token),
+                Err(error) => Err(CredentialsError::TokenError(error.to_string())),
+            }
         }
         /// Prompt user in console for login and password and returns a credential
         pub fn from_console_prompt() -> Result<Credentials> {
@@ -113,5 +125,14 @@ mod tests {
             cred.get_password_md5(),
             "md55e73b42456347af1be4be2d0c8eda64a"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_token() {
+        let cred = Credentials::new(UNIT_TEST_POSTGREST_SERVER, "consult", "consult").unwrap();
+        match cred.token().await {
+            Ok(_) => assert!(true),
+            Err(e) => assert!(false, "{}", format!("{}", e)),
+        };
     }
 }
