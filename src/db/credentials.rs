@@ -65,7 +65,7 @@ pub mod db {
         }
 
         pub fn client(&self) -> Postgrest {
-            Postgrest::new(self.get_uri().host().unwrap())
+            Postgrest::new(&self.host)
         }
         /// Prompt user in console for login and password and returns a credential
         pub fn from_console_prompt() -> Result<Credentials> {
